@@ -68,6 +68,45 @@ def load_config():
             }
         }
     
+    # Try environment variables (alternative to secrets)
+    elif os.getenv('EMAIL_USERNAME'):
+        st.success("🔐 Secure Mode: Using environment variables")
+        return {
+            "email": {
+                "provider": os.getenv('EMAIL_PROVIDER', 'aol'),
+                "imap_server": os.getenv('EMAIL_IMAP_SERVER', 'imap.aol.com'),
+                "imap_port": int(os.getenv('EMAIL_IMAP_PORT', '993')),
+                "username": os.getenv('EMAIL_USERNAME'),
+                "password": os.getenv('EMAIL_PASSWORD')
+            },
+            "newsletters": [
+                {
+                    "name": "mando_minutes",
+                    "enabled": True,
+                    "sender": ["hello@www.mandominutes.com", "mando@mandominutes.com"],
+                    "subject_contains": ["Mando Minutes"],
+                    "podcast_style": "Fast-paced crypto and markets briefing with link following"
+                },
+                {
+                    "name": "puck_news",
+                    "enabled": True,
+                    "sender": ["jonkelly@puck.news", "newsletter@puck.news"],
+                    "subject_contains": ["Jon Kelly", "Puck"],
+                    "podcast_style": "In-depth analysis and commentary"
+                }
+            ],
+            "ai_processing": {
+                "provider": "openai",
+                "api_key": os.getenv('OPENAI_API_KEY'),
+                "model": "gpt-4o-mini"
+            },
+            "voice_generation": {
+                "provider": "elevenlabs",
+                "api_key": os.getenv('ELEVENLABS_API_KEY'),
+                "voice_id": os.getenv('ELEVENLABS_VOICE_ID', 'pNInz6obpgDQGcFmaJgB')
+            }
+        }
+    
     # Try local config file (for local development)
     try:
         with open('multi_newsletter_config.json', 'r') as f:
@@ -138,28 +177,70 @@ with tab1:
                 status = st.empty()
                 
                 try:
-                    # Run the clean Mando processor
+                    # Process directly in Streamlit instead of subprocess
                     status.info("🔍 Searching for Mando Minutes email...")
                     
-                    result = subprocess.run(
-                        ["python3", "send_clean_mando.py"],
-                        capture_output=True,
-                        text=True
-                    )
+                    # Use config from secrets/local config
+                    email_config = config['email']
                     
-                    if result.returncode == 0:
-                        st.success("✅ Mando Minutes podcast created and sent!")
-                        st.balloons()
-                        
-                        # Show output
-                        with st.expander("View Processing Log"):
-                            st.code(result.stdout)
+                    # Connect to email
+                    import ssl
+                    context = ssl.create_default_context()
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+                    
+                    imap = imaplib.IMAP4_SSL(email_config['imap_server'], email_config['imap_port'], ssl_context=context)
+                    imap.login(email_config['username'], email_config['password'])
+                    imap.select('INBOX')
+                    
+                    # Search for Mando Minutes
+                    today = datetime.now().strftime('%d-%b-%Y')
+                    search_query = f'SUBJECT "Mando Minutes" SINCE {today}'
+                    _, data = imap.search(None, search_query)
+                    
+                    if not data[0]:
+                        # Try yesterday too
+                        yesterday = (datetime.now() - timedelta(days=1)).strftime('%d-%b-%Y')
+                        search_query = f'SUBJECT "Mando Minutes" SINCE {yesterday}'
+                        _, data = imap.search(None, search_query)
+                    
+                    if not data[0]:
+                        st.error("❌ No recent Mando Minutes email found")
                     else:
-                        st.error("❌ Processing failed")
-                        st.code(result.stderr)
+                        email_id = data[0].split()[-1]  # Get latest email
+                        _, msg_data = imap.fetch(email_id, '(RFC822)')
+                        email_message = email.message_from_bytes(msg_data[0][1])
+                        
+                        # Extract email content
+                        body = ""
+                        if email_message.is_multipart():
+                            for part in email_message.walk():
+                                if part.get_content_type() == "text/plain":
+                                    body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                    break
+                        else:
+                            body = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
+                        
+                        if body:
+                            status.success("✅ Email found! Processing content...")
+                            
+                            # Show preview of content
+                            with st.expander("Preview Email Content"):
+                                st.text_area("Email Body", body[:1000] + "..." if len(body) > 1000 else body, height=200)
+                            
+                            # For now, show success - we can add AI processing later
+                            st.success("✅ Email processed! (AI processing will be added next)")
+                            st.balloons()
+                        else:
+                            st.error("❌ Could not extract email content")
+                    
+                    imap.close()
+                    imap.logout()
                         
                 except Exception as e:
-                    st.error(f"Error: {str(e)}")
+                    st.error(f"❌ Processing failed: {str(e)}")
+                    with st.expander("Error Details"):
+                        st.code(str(e))
     
     with col2:
         st.subheader("📰 Puck News")
