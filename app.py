@@ -29,11 +29,52 @@ st.markdown("Convert your newsletters into podcasts with one click!")
 # Load configuration
 @st.cache_data
 def load_config():
+    # Try Streamlit secrets first (for secure cloud deployment)
+    if hasattr(st, 'secrets') and 'email' in st.secrets:
+        st.success("🔐 Secure Mode: Using encrypted configuration")
+        return {
+            "email": {
+                "provider": st.secrets["email"]["provider"],
+                "imap_server": st.secrets["email"]["imap_server"],
+                "imap_port": st.secrets["email"]["imap_port"],
+                "username": st.secrets["email"]["username"],
+                "password": st.secrets["email"]["password"]
+            },
+            "newsletters": [
+                {
+                    "name": "mando_minutes",
+                    "enabled": True,
+                    "sender": ["hello@www.mandominutes.com", "mando@mandominutes.com"],
+                    "subject_contains": ["Mando Minutes"],
+                    "podcast_style": "Fast-paced crypto and markets briefing with link following"
+                },
+                {
+                    "name": "puck_news",
+                    "enabled": True,
+                    "sender": ["jonkelly@puck.news", "newsletter@puck.news"],
+                    "subject_contains": ["Jon Kelly", "Puck"],
+                    "podcast_style": "In-depth analysis and commentary"
+                }
+            ],
+            "ai_processing": {
+                "provider": "openai",
+                "api_key": st.secrets["ai_processing"]["api_key"],
+                "model": "gpt-4o-mini"
+            },
+            "voice_generation": {
+                "provider": "elevenlabs",
+                "api_key": st.secrets["voice_generation"]["api_key"],
+                "voice_id": st.secrets["voice_generation"]["voice_id"]
+            }
+        }
+    
+    # Try local config file (for local development)
     try:
         with open('multi_newsletter_config.json', 'r') as f:
+            st.info("🏠 Local Mode: Using local configuration")
             return json.load(f)
     except FileNotFoundError:
-        # Demo configuration for deployment
+        # Demo configuration for deployment without secrets
         st.warning("⚠️ Demo Mode: Real config file not found. This is a demonstration dashboard.")
         return {
             "email": {

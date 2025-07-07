@@ -1,37 +1,32 @@
 #!/bin/bash
-# Create a macOS app for Email-to-Podcast
 
-echo "📱 Creating Email-to-Podcast App..."
+# Create Email Podcast Dashboard App
+APP_NAME="Email Podcast Dashboard"
+APP_DIR="/Users/markbaumrind/Desktop/${APP_NAME}.app"
+CONTENTS_DIR="${APP_DIR}/Contents"
+MACOS_DIR="${CONTENTS_DIR}/MacOS"
+RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 
-# Create app structure
-APP_NAME="Email to Podcast"
-APP_DIR="$APP_NAME.app"
-CONTENTS_DIR="$APP_DIR/Contents"
-MACOS_DIR="$CONTENTS_DIR/MacOS"
-RESOURCES_DIR="$CONTENTS_DIR/Resources"
-
-# Create directories
-mkdir -p "$MACOS_DIR"
-mkdir -p "$RESOURCES_DIR"
+# Create directory structure
+mkdir -p "${MACOS_DIR}"
+mkdir -p "${RESOURCES_DIR}"
 
 # Create Info.plist
-cat > "$CONTENTS_DIR/Info.plist" << 'EOF'
+cat > "${CONTENTS_DIR}/Info.plist" << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>launcher</string>
+    <string>launch_dashboard</string>
     <key>CFBundleIdentifier</key>
-    <string>com.emailtopodcast.app</string>
+    <string>com.local.email-podcast-dashboard</string>
     <key>CFBundleName</key>
-    <string>Email to Podcast</string>
+    <string>Email Podcast Dashboard</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>10.12</string>
     <key>LSUIElement</key>
     <false/>
 </dict>
@@ -39,23 +34,25 @@ cat > "$CONTENTS_DIR/Info.plist" << 'EOF'
 EOF
 
 # Create launcher script
-cat > "$MACOS_DIR/launcher" << 'EOF'
+cat > "${MACOS_DIR}/launch_dashboard" << 'EOF'
 #!/bin/bash
-cd "$(dirname "$0")/../../../"
-/usr/bin/python3 desktop_app.py
+cd /Users/markbaumrind/Desktop/email_podcast_agent
+
+# Check if already running
+if curl -s http://localhost:8501 > /dev/null 2>&1; then
+    echo "Dashboard already running, opening browser..."
+    open http://localhost:8501
+else
+    echo "Starting Email Podcast Dashboard..."
+    # Start Streamlit and open browser
+    streamlit run app.py --browser.gatherUsageStats false &
+    sleep 3
+    open http://localhost:8501
+fi
 EOF
 
-# Make launcher executable
-chmod +x "$MACOS_DIR/launcher"
+# Make executable
+chmod +x "${MACOS_DIR}/launch_dashboard"
 
-# Create app icon (placeholder)
-echo "🎨 Note: Add an icon file at $RESOURCES_DIR/icon.icns for a custom icon"
-
-echo "✅ macOS app created: $APP_DIR"
-echo ""
-echo "To use:"
-echo "1. Double-click '$APP_DIR' to launch"
-echo "2. Drag to Applications folder for permanent installation"
-echo ""
-echo "Or run directly:"
-echo "python3 desktop_app.py"
+echo "✅ Created: ${APP_NAME}.app on your Desktop!"
+echo "🎯 Double-click it to launch your dashboard!"
