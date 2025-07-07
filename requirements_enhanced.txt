@@ -1,0 +1,30 @@
+# Core email functionality
+imaplib
+email
+
+# Web scraping and link following
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Scheduling and automation
+schedule>=1.2.0
+
+# Async support (optional)
+aiohttp>=3.8.0
+
+# Enhanced HTML parsing
+html5lib>=1.1
+
+# URL parsing (included in standard library but listing for clarity)
+# urllib3
+
+# Concurrent processing
+# concurrent.futures (included in standard library)
+
+# JSON handling (included in standard library)
+# json
+
+# Logging and date handling (included in standard library)
+# logging
+# datetime

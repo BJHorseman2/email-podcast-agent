@@ -1,0 +1,5 @@
+CORRECT MANDO MINUTES SENDER:
+Mando Minutes <hello@www.mandominutes.com>
+
+Update your aol_complete_config.json file:
+"sender": "Mando Minutes <hello@www.mandominutes.com>"

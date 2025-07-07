@@ -1,0 +1,19 @@
+# Daily AOL Email to Podcast - Cron Setup
+# Add this to your crontab to run every morning at 8 AM
+
+# Edit your crontab:
+# crontab -e
+
+# Add this line to run the AOL agent daily at 8:00 AM:
+0 8 * * * /Users/markbaumrind/Desktop/email_podcast_agent/run_aol_agent.sh >> /Users/markbaumrind/Desktop/email_podcast_agent/cron.log 2>&1
+
+# Alternative times:
+# 0 7 * * * (7 AM)
+# 30 8 * * * (8:30 AM)
+# 0 9 * * * (9 AM)
+
+# To check if cron job is active:
+# crontab -l
+
+# To remove the cron job:
+# crontab -e (then delete the line)
