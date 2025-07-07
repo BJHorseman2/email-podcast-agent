@@ -50,10 +50,13 @@ Thumbs.db
 *.log
 *.out
 
-# Config files with sensitive data
+# Config files with sensitive data (keep template files)
+multi_newsletter_config.json
+aol_complete_config.json
+aol_complete_config_fixed.json
 config.json
-*_config.json
-*.json
+full_automation_config.json
+multi_email_config.json
 
 # Podcasts directory (likely contains large audio files)
 podcasts/

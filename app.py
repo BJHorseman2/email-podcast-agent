@@ -29,8 +29,33 @@ st.markdown("Convert your newsletters into podcasts with one click!")
 # Load configuration
 @st.cache_data
 def load_config():
-    with open('multi_newsletter_config.json', 'r') as f:
-        return json.load(f)
+    try:
+        with open('multi_newsletter_config.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        # Demo configuration for deployment
+        st.warning("⚠️ Demo Mode: Real config file not found. This is a demonstration dashboard.")
+        return {
+            "email": {
+                "username": "demo@example.com",
+                "provider": "aol"
+            },
+            "newsletters": [
+                {
+                    "name": "mando_minutes",
+                    "enabled": True,
+                    "podcast_style": "Fast-paced crypto and markets briefing"
+                },
+                {
+                    "name": "puck_news", 
+                    "enabled": True,
+                    "podcast_style": "In-depth analysis and commentary"
+                }
+            ],
+            "voice_generation": {
+                "provider": "elevenlabs"
+            }
+        }
 
 config = load_config()
 
