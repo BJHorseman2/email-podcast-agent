@@ -14,6 +14,7 @@ import email
 import ssl
 import pandas as pd
 from pathlib import Path
+import re
 
 # Page config
 st.set_page_config(
@@ -184,7 +185,6 @@ with tab1:
                     email_config = config['email']
                     
                     # Connect to email
-                    import ssl
                     context = ssl.create_default_context()
                     context.check_hostname = False
                     context.verify_mode = ssl.CERT_NONE
@@ -248,8 +248,106 @@ with tab1:
         
         if st.button("🚀 Process Puck News", type="primary", key="puck"):
             with st.spinner("Processing Puck News..."):
-                st.info("🚧 Puck News processing coming soon!")
-                # Would run the Puck processor here
+                # Create a placeholder for real-time updates
+                status = st.empty()
+                
+                try:
+                    # Process directly in Streamlit
+                    status.info("🔍 Searching for Puck News email...")
+                    
+                    # Use config from secrets/local config
+                    email_config = config['email']
+                    
+                    # Connect to email
+                    context = ssl.create_default_context()
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+                    
+                    imap = imaplib.IMAP4_SSL(email_config['imap_server'], email_config['imap_port'], ssl_context=context)
+                    imap.login(email_config['username'], email_config['password'])
+                    imap.select('INBOX')
+                    
+                    # Search for Puck News - try multiple search terms
+                    today = datetime.now().strftime('%d-%b-%Y')
+                    search_queries = [
+                        f'SUBJECT "Jon Kelly" SINCE {today}',
+                        f'SUBJECT "Puck" SINCE {today}',
+                        f'FROM "puck.news" SINCE {today}',
+                        f'FROM "jonkelly@puck.news" SINCE {today}'
+                    ]
+                    
+                    data = None
+                    found_query = ""
+                    for query in search_queries:
+                        _, search_data = imap.search(None, query)
+                        if search_data[0]:
+                            data = search_data
+                            found_query = query
+                            break
+                    
+                    if not data or not data[0]:
+                        # Try yesterday too
+                        yesterday = (datetime.now() - timedelta(days=1)).strftime('%d-%b-%Y')
+                        for query in search_queries:
+                            query_yesterday = query.replace(today, yesterday)
+                            _, search_data = imap.search(None, query_yesterday)
+                            if search_data[0]:
+                                data = search_data
+                                found_query = query_yesterday
+                                break
+                    
+                    if not data or not data[0]:
+                        st.error("❌ No recent Puck News email found")
+                        st.info("Searched for: Jon Kelly, Puck, puck.news, jonkelly@puck.news")
+                    else:
+                        email_id = data[0].split()[-1]  # Get latest email
+                        _, msg_data = imap.fetch(email_id, '(RFC822)')
+                        email_message = email.message_from_bytes(msg_data[0][1])
+                        
+                        # Get email subject and sender for confirmation
+                        subject = email_message.get('Subject', 'No Subject')
+                        sender = email_message.get('From', 'Unknown Sender')
+                        
+                        # Extract email content
+                        body = ""
+                        if email_message.is_multipart():
+                            for part in email_message.walk():
+                                if part.get_content_type() == "text/plain":
+                                    body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                    break
+                                elif part.get_content_type() == "text/html" and not body:
+                                    # Fallback to HTML if no plain text
+                                    html_body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                    # Basic HTML stripping
+                                    body = re.sub(r'<[^>]+>', '', html_body)
+                        else:
+                            body = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
+                        
+                        if body:
+                            status.success("✅ Puck News email found! Processing content...")
+                            
+                            # Show email details
+                            st.info(f"**Subject:** {subject}")
+                            st.info(f"**From:** {sender}")
+                            st.info(f"**Found with:** {found_query}")
+                            
+                            # Show preview of content
+                            with st.expander("Preview Email Content"):
+                                st.text_area("Email Body", body[:1500] + "..." if len(body) > 1500 else body, height=300)
+                            
+                            # For now, show success - we can add AI processing later
+                            st.success("✅ Puck News processed! (AI processing will be added next)")
+                            st.balloons()
+                        else:
+                            st.error("❌ Could not extract email content")
+                    
+                    imap.close()
+                    imap.logout()
+                        
+                except Exception as e:
+                    st.error(f"❌ Processing failed: {str(e)}")
+                    with st.expander("Error Details"):
+                        st.code(str(e))
     
     # Check for new emails
     st.divider()
@@ -333,7 +431,7 @@ with tab2:
         else:
             st.info("No podcasts found yet. Process some emails!")
     else:
-        st.error("Podcasts directory not found")
+        st.info("Podcasts directory not found - it will be created when you process your first email")
 
 with tab3:
     st.header("📊 Analytics")
@@ -348,64 +446,109 @@ with tab3:
             st.metric("Total Podcasts", len(mp3_files))
         with col2:
             total_size = sum(f.stat().st_size for f in mp3_files) / (1024 * 1024)
-            st.metric("Total Size", f"{total_size:.1f} MB")
+            st.metric("Total Size (MB)", f"{total_size:.1f}")
         with col3:
-            avg_size = total_size / len(mp3_files) if mp3_files else 0
-            st.metric("Average Size", f"{avg_size:.1f} MB")
-        
-        # Recent activity chart
+            st.metric("Script Files", len(txt_files))
+            
         if mp3_files:
-            st.subheader("📈 Recent Activity")
-            
-            # Create activity data
+            # Recent activity chart
             dates = []
-            for f in mp3_files[-30:]:  # Last 30 files
-                dates.append(datetime.fromtimestamp(f.stat().st_mtime).date())
+            counts = []
             
-            # Count by date
-            date_counts = pd.Series(dates).value_counts().sort_index()
+            # Group files by date
+            file_dates = {}
+            for file in mp3_files:
+                file_date = datetime.fromtimestamp(file.stat().st_mtime).date()
+                file_dates[file_date] = file_dates.get(file_date, 0) + 1
             
-            # Create chart
-            st.bar_chart(date_counts)
+            # Create chart data
+            chart_data = pd.DataFrame({
+                'Date': list(file_dates.keys()),
+                'Podcasts Created': list(file_dates.values())
+            })
+            
+            st.subheader("Recent Activity")
+            st.bar_chart(chart_data.set_index('Date'))
+    else:
+        st.info("No analytics available yet. Process some emails to see stats!")
 
 with tab4:
     st.header("⚙️ Settings")
     
-    # Test email
-    st.subheader("✉️ Test Email Connection")
-    if st.button("Test Email Connection"):
-        with st.spinner("Testing..."):
-            try:
-                context = ssl.create_default_context()
-                context.check_hostname = False
-                context.verify_mode = ssl.CERT_NONE
-                
-                imap = imaplib.IMAP4_SSL('imap.aol.com', 993, ssl_context=context)
-                imap.login(config['email']['username'], config['email']['password'])
-                imap.logout()
-                
-                st.success("✅ Email connection successful!")
-            except Exception as e:
-                st.error(f"❌ Connection failed: {str(e)}")
+    st.subheader("📧 Email Configuration")
     
-    # Test audio
-    st.subheader("🎙️ Test Audio Generation")
-    test_text = st.text_area("Test Text", "This is a test of the email to podcast system.")
-    if st.button("Generate Test Audio"):
-        st.info("🚧 Audio test coming soon!")
+    # Show current config (non-sensitive parts)
+    col1, col2 = st.columns(2)
     
-    # Clean up old files
-    st.subheader("🗑️ Cleanup")
-    if st.button("Remove Old Podcasts (>7 days)"):
-        if podcast_dir.exists():
-            cutoff = datetime.now() - timedelta(days=7)
-            removed = 0
-            for file in podcast_dir.glob("*.mp3"):
-                if datetime.fromtimestamp(file.stat().st_mtime) < cutoff:
-                    file.unlink()
-                    removed += 1
-            st.success(f"✅ Removed {removed} old podcast files")
-
-# Footer
-st.divider()
-st.markdown("Made with ❤️ by your Email-to-Podcast AI")
+    with col1:
+        st.text(f"Provider: {config['email'].get('provider', 'N/A')}")
+        st.text(f"Username: {config['email'].get('username', 'N/A')}")
+        st.text(f"IMAP Server: {config['email'].get('imap_server', 'N/A')}")
+        
+    with col2:
+        st.text(f"IMAP Port: {config['email'].get('imap_port', 'N/A')}")
+        st.text("Password: ••••••••")
+    
+    st.subheader("🎙️ Voice Generation")
+    voice_config = config.get('voice_generation', {})
+    st.text(f"Provider: {voice_config.get('provider', 'N/A')}")
+    st.text(f"Voice ID: {voice_config.get('voice_id', 'N/A')}")
+    st.text("API Key: ••••••••")
+    
+    st.subheader("🤖 AI Processing")
+    ai_config = config.get('ai_processing', {})
+    st.text(f"Provider: {ai_config.get('provider', 'N/A')}")
+    st.text(f"Model: {ai_config.get('model', 'N/A')}")
+    st.text("API Key: ••••••••")
+    
+    st.divider()
+    
+    st.subheader("🔄 Actions")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🗑️ Clear Cache", help="Clear cached configuration"):
+            st.cache_data.clear()
+            st.success("Cache cleared!")
+            st.rerun()
+    
+    with col2:
+        if st.button("🔍 Test Email Connection", help="Test connection to email server"):
+            with st.spinner("Testing email connection..."):
+                try:
+                    context = ssl.create_default_context()
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+                    
+                    imap = imaplib.IMAP4_SSL(config['email']['imap_server'], config['email']['imap_port'], ssl_context=context)
+                    imap.login(config['email']['username'], config['email']['password'])
+                    imap.select('INBOX')
+                    imap.logout()
+                    
+                    st.success("✅ Email connection successful!")
+                except Exception as e:
+                    st.error(f"❌ Email connection failed: {str(e)}")
+    
+    st.divider()
+    
+    st.subheader("ℹ️ About")
+    st.markdown("""
+    **Email to Podcast Dashboard v1.0**
+    
+    This application converts your newsletter emails into podcasts using AI.
+    
+    **Features:**
+    - 🔐 Secure credential management
+    - 📧 Email processing (Mando Minutes, Puck News)
+    - 🤖 AI-powered content analysis
+    - 🎙️ Voice generation with ElevenLabs
+    - 📱 Mobile-friendly interface
+    - ☁️ Cloud deployment ready
+    
+    **Next Steps:**
+    - Add AI processing for content transformation
+    - Implement voice generation
+    - Add scheduling automation
+    - Email delivery of podcasts
+    """)
