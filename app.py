@@ -147,41 +147,67 @@ config = load_config()
 def process_with_ai(content, newsletter_type, config):
     """Convert email content to podcast script using OpenAI"""
     try:
+        # Check if OpenAI is available and has valid API key
+        ai_config = config.get('ai_processing', {})
+        api_key = ai_config.get('api_key', '')
+        
+        if not api_key or api_key == 'YOUR_OPENAI_API_KEY':
+            # Fallback to template-based script generation
+            return generate_template_script(content, newsletter_type)
+        
         import openai
         
         # Set up OpenAI client
-        client = openai.OpenAI(api_key=config['ai_processing']['api_key'])
+        client = openai.OpenAI(api_key=api_key)
         
         # Different prompts for different newsletters
         if newsletter_type == "mando_minutes":
             prompt = f"""
-Convert this Mando Minutes newsletter into a fast-paced, energetic 3-5 minute podcast script. 
-Focus on crypto, markets, and key financial news. Make it punchy and informative.
+Convert this Mando Minutes newsletter into a professional podcast script with sound effects and music cues. 
+Make it energetic, fast-paced, and include professional audio production elements.
 
 Newsletter content:
 {content}
 
 Create a podcast script that:
-- Starts with "Good morning! This is your Mando Minutes briefing for [date]"
-- Covers the key market movements and crypto news
-- Is conversational and engaging
-- Ends with "That's your Mando Minutes update. Stay informed, stay ahead."
+- Includes sound effect cues like [INTRO MUSIC], [SOUND EFFECT: description], [TRANSITION SOUND]
+- Features "Mark" as the host name
+- Starts with professional intro music and sound effects
+- Has 3-5 minutes of content focused on crypto and markets
+- Uses engaging transitions between topics
+- Ends with professional outro music
+- Is conversational and energetic
+
+Format like:
+[UPBEAT INTRO MUSIC FADES IN]
+[SOUND EFFECT: Digital beep]
+Good morning! I'm Mark, and this is your Mando Minutes briefing...
+[INTRO MUSIC FADES OUT]
 
 Script:
 """
         else:  # puck_news
             prompt = f"""
-Convert this Puck newsletter into an engaging 5-8 minute podcast with deeper analysis. 
-Include context and insights. Make it conversational and thoughtful.
+Convert this Puck newsletter into a sophisticated podcast script with professional sound design. 
+Make it thoughtful, analytical, and include elegant audio production elements.
 
 Newsletter content:
 {content}
 
 Create a podcast script that:
-- Starts with "Welcome to your Puck News briefing for [date]"
-- Provides in-depth analysis of the key stories
-- Is professional but conversational
-- Ends with "That's your Puck News update. Thanks for listening."
+- Includes sophisticated sound cues like [INTRO MUSIC], [SOUND EFFECT: description], [TRANSITION SOUND]
+- Features "Mark" as the host name
+- Starts with sophisticated intro music and news-style sound effects
+- Has 5-8 minutes of in-depth analysis
+- Uses elegant transitions between topics  
+- Ends with professional outro music
+- Is conversational but authoritative
+
+Format like:
+[SOPHISTICATED INTRO MUSIC FADES IN]
+[SOUND EFFECT: News ticker]
+Welcome to Puck News Analysis. I'm Mark, and this is your deep-dive briefing...
+[INTRO MUSIC FADES TO BACKGROUND]
 
 Script:
 """
@@ -199,8 +225,141 @@ Script:
         return response.choices[0].message.content.strip()
         
     except Exception as e:
-        st.error(f"AI processing failed: {str(e)}")
-        return None
+        error_msg = str(e)
+        if "quota" in error_msg.lower() or "429" in error_msg:
+            st.warning("⚠️ OpenAI quota exceeded. Using template script instead.")
+            return generate_template_script(content, newsletter_type)
+        else:
+            st.error(f"AI processing failed: {error_msg}")
+            st.info("💡 Using fallback template script...")
+            return generate_template_script(content, newsletter_type)
+
+def generate_template_script(content, newsletter_type):
+    """Generate a professional script with sound effects and personalization"""
+    try:
+        import re
+        from datetime import datetime
+        
+        # Clean content
+        clean_content = re.sub(r'\[.*?\]\(.*?\)', '', content)  # Remove markdown links
+        clean_content = re.sub(r'http\S+', '', clean_content)   # Remove URLs
+        clean_content = re.sub(r'\s+', ' ', clean_content).strip()  # Clean whitespace
+        
+        # Extract key points (enhanced approach)
+        lines = clean_content.split('\n')
+        key_points = []
+        for line in lines:
+            line = line.strip()
+            if len(line) > 30 and any(keyword in line.lower() for keyword in ['bitcoin', 'crypto', 'market', 'news', 'price', 'trading', 'report', 'analysis', 'update', 'development', 'industry']):
+                key_points.append(line)
+        
+        # Limit to top points
+        key_points = key_points[:5]
+        
+        date_str = datetime.now().strftime('%A, %B %d, %Y')
+        time_str = datetime.now().strftime('%I:%M %p')
+        
+        if newsletter_type == "mando_minutes":
+            script = f"""[UPBEAT INTRO MUSIC FADES IN - 3 seconds]
+
+[SOUND EFFECT: Digital beep sequence]
+
+Good morning! I'm Mark, and this is your Mando Minutes briefing for {date_str}.
+
+[INTRO MUSIC FADES OUT]
+
+[SOUND EFFECT: Market bell]
+
+It's {time_str}, and here's what's moving markets right now.
+
+[TRANSITION SOUND: Whoosh effect]
+
+"""
+            
+            for i, point in enumerate(key_points, 1):
+                script += f"""**MARKET UPDATE {i}:**
+
+{point}
+
+[TRANSITION SOUND: Subtle ding - 0.5 seconds]
+
+"""
+            
+            script += f"""[BACKGROUND MUSIC: Subtle tech beats fade in]
+
+And that's your Mando Minutes market briefing for {date_str}. 
+
+I'm Mark, keeping you informed and ahead of the curve.
+
+[SOUND EFFECT: Digital flourish]
+
+Stay sharp, stay profitable.
+
+[OUTRO MUSIC BUILDS AND FADES OUT - 3 seconds]
+
+[END]"""
+            
+        else:  # puck_news
+            script = f"""[SOPHISTICATED INTRO MUSIC FADES IN - 4 seconds]
+
+[SOUND EFFECT: News ticker]
+
+Welcome to Puck News Analysis. I'm Mark, and this is your deep-dive briefing for {date_str}.
+
+[INTRO MUSIC FADES TO BACKGROUND]
+
+Today we're analyzing the stories that matter, the context you need, and the implications ahead.
+
+[TRANSITION SOUND: Elegant chime]
+
+"""
+            
+            for i, point in enumerate(key_points, 1):
+                script += f"""**ANALYSIS {i}:**
+
+{point}
+
+[PAUSE FOR EMPHASIS - 1 second]
+
+This development is significant because it reflects broader industry trends and regulatory shifts we've been tracking.
+
+[TRANSITION SOUND: Soft piano note]
+
+"""
+            
+            script += f"""[BACKGROUND MUSIC: Thoughtful instrumental fade in]
+
+Those are today's key developments worth your attention.
+
+I'm Mark, and this has been your Puck News Analysis for {date_str}.
+
+[SOUND EFFECT: Sophisticated tone]
+
+Stay informed, stay ahead.
+
+[OUTRO MUSIC BUILDS ELEGANTLY AND FADES - 4 seconds]
+
+[END]"""
+        
+        return script
+        
+    except Exception as e:
+        return f"""[INTRO MUSIC]
+
+Welcome! I'm Mark, and this is your newsletter podcast for {datetime.now().strftime('%B %d, %Y')}.
+
+[MUSIC FADES]
+
+Here's today's content summary:
+
+{content[:500]}...
+
+[OUTRO MUSIC]
+
+That's your update for today. Thanks for listening!
+
+[MUSIC FADES OUT]"""
+        
 
 def generate_voice(script, config):
     """Convert script to audio using ElevenLabs"""
