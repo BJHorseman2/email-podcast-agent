@@ -15,6 +15,9 @@ import ssl
 import pandas as pd
 from pathlib import Path
 import re
+import requests
+import tempfile
+import base64
 
 # Page config
 st.set_page_config(
@@ -140,6 +143,126 @@ def load_config():
 
 config = load_config()
 
+# AI and Voice Processing Functions
+def process_with_ai(content, newsletter_type, config):
+    """Convert email content to podcast script using OpenAI"""
+    try:
+        import openai
+        
+        # Set up OpenAI client
+        client = openai.OpenAI(api_key=config['ai_processing']['api_key'])
+        
+        # Different prompts for different newsletters
+        if newsletter_type == "mando_minutes":
+            prompt = f"""
+Convert this Mando Minutes newsletter into a fast-paced, energetic 3-5 minute podcast script. 
+Focus on crypto, markets, and key financial news. Make it punchy and informative.
+
+Newsletter content:
+{content}
+
+Create a podcast script that:
+- Starts with "Good morning! This is your Mando Minutes briefing for [date]"
+- Covers the key market movements and crypto news
+- Is conversational and engaging
+- Ends with "That's your Mando Minutes update. Stay informed, stay ahead."
+
+Script:
+"""
+        else:  # puck_news
+            prompt = f"""
+Convert this Puck newsletter into an engaging 5-8 minute podcast with deeper analysis. 
+Include context and insights. Make it conversational and thoughtful.
+
+Newsletter content:
+{content}
+
+Create a podcast script that:
+- Starts with "Welcome to your Puck News briefing for [date]"
+- Provides in-depth analysis of the key stories
+- Is professional but conversational
+- Ends with "That's your Puck News update. Thanks for listening."
+
+Script:
+"""
+        
+        response = client.chat.completions.create(
+            model=config['ai_processing']['model'],
+            messages=[
+                {"role": "system", "content": "You are a professional podcast script writer who creates engaging, conversational audio content."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=2000,
+            temperature=0.7
+        )
+        
+        return response.choices[0].message.content.strip()
+        
+    except Exception as e:
+        st.error(f"AI processing failed: {str(e)}")
+        return None
+
+def generate_voice(script, config):
+    """Convert script to audio using ElevenLabs"""
+    try:
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{config['voice_generation']['voice_id']}"
+        
+        headers = {
+            "Accept": "audio/mpeg",
+            "Content-Type": "application/json",
+            "xi-api-key": config['voice_generation']['api_key']
+        }
+        
+        data = {
+            "text": script,
+            "model_id": config['voice_generation'].get('model', 'eleven_multilingual_v2'),
+            "voice_settings": {
+                "stability": config['voice_generation'].get('voice_settings', {}).get('stability', 0.5),
+                "similarity_boost": config['voice_generation'].get('voice_settings', {}).get('similarity_boost', 0.8),
+                "style": config['voice_generation'].get('voice_settings', {}).get('style', 0.2),
+                "use_speaker_boost": config['voice_generation'].get('voice_settings', {}).get('use_speaker_boost', True)
+            }
+        }
+        
+        response = requests.post(url, json=data, headers=headers)
+        
+        if response.status_code == 200:
+            return response.content
+        else:
+            st.error(f"Voice generation failed: {response.status_code} - {response.text}")
+            return None
+            
+    except Exception as e:
+        st.error(f"Voice generation error: {str(e)}")
+        return None
+
+def save_podcast(audio_data, newsletter_type):
+    """Save audio data and return file info"""
+    try:
+        # Create podcasts directory if it doesn't exist
+        podcast_dir = Path("podcasts")
+        podcast_dir.mkdir(exist_ok=True)
+        
+        # Create filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{newsletter_type}_{timestamp}.mp3"
+        filepath = podcast_dir / filename
+        
+        # Save audio file
+        with open(filepath, 'wb') as f:
+            f.write(audio_data)
+        
+        return {
+            'filename': filename,
+            'filepath': filepath,
+            'size': len(audio_data),
+            'created': datetime.now()
+        }
+        
+    except Exception as e:
+        st.error(f"Failed to save podcast: {str(e)}")
+        return None
+
 # Sidebar for configuration
 with st.sidebar:
     st.header("⚙️ Configuration")
@@ -228,9 +351,55 @@ with tab1:
                             with st.expander("Preview Email Content"):
                                 st.text_area("Email Body", body[:1000] + "..." if len(body) > 1000 else body, height=200)
                             
-                            # For now, show success - we can add AI processing later
-                            st.success("✅ Email processed! (AI processing will be added next)")
-                            st.balloons()
+                            # AI Processing
+                            status.info("🤖 Creating podcast script with AI...")
+                            script = process_with_ai(body, "mando_minutes", config)
+                            
+                            if script:
+                                # Show generated script
+                                with st.expander("Generated Podcast Script"):
+                                    st.text_area("Script", script, height=300)
+                                
+                                # Voice Generation
+                                status.info("🎤 Generating voice with ElevenLabs...")
+                                audio_data = generate_voice(script, config)
+                                
+                                if audio_data:
+                                    # Save podcast
+                                    status.info("💾 Saving podcast file...")
+                                    file_info = save_podcast(audio_data, "mando_minutes")
+                                    
+                                    if file_info:
+                                        status.success("✅ PODCAST CREATED SUCCESSFULLY!")
+                                        
+                                        # Show file info
+                                        col1, col2, col3 = st.columns(3)
+                                        with col1:
+                                            st.metric("File Size", f"{file_info['size'] / (1024*1024):.1f} MB")
+                                        with col2:
+                                            st.metric("Duration", "~3-5 min")
+                                        with col3:
+                                            st.metric("Created", file_info['created'].strftime("%H:%M:%S"))
+                                        
+                                        # Download button
+                                        st.download_button(
+                                            label="🎧 Download Podcast",
+                                            data=audio_data,
+                                            file_name=file_info['filename'],
+                                            mime="audio/mpeg",
+                                            type="primary"
+                                        )
+                                        
+                                        # Audio player
+                                        st.audio(audio_data, format='audio/mp3')
+                                        
+                                        st.balloons()
+                                    else:
+                                        st.error("❌ Failed to save podcast file")
+                                else:
+                                    st.error("❌ Voice generation failed")
+                            else:
+                                st.error("❌ AI script generation failed")
                         else:
                             st.error("❌ Could not extract email content")
                     
@@ -335,9 +504,55 @@ with tab1:
                             with st.expander("Preview Email Content"):
                                 st.text_area("Email Body", body[:1500] + "..." if len(body) > 1500 else body, height=300)
                             
-                            # For now, show success - we can add AI processing later
-                            st.success("✅ Puck News processed! (AI processing will be added next)")
-                            st.balloons()
+                            # AI Processing
+                            status.info("🤖 Creating podcast script with AI...")
+                            script = process_with_ai(body, "puck_news", config)
+                            
+                            if script:
+                                # Show generated script
+                                with st.expander("Generated Podcast Script"):
+                                    st.text_area("Script", script, height=300)
+                                
+                                # Voice Generation
+                                status.info("🎤 Generating voice with ElevenLabs...")
+                                audio_data = generate_voice(script, config)
+                                
+                                if audio_data:
+                                    # Save podcast
+                                    status.info("💾 Saving podcast file...")
+                                    file_info = save_podcast(audio_data, "puck_news")
+                                    
+                                    if file_info:
+                                        status.success("✅ PUCK NEWS PODCAST CREATED!")
+                                        
+                                        # Show file info
+                                        col1, col2, col3 = st.columns(3)
+                                        with col1:
+                                            st.metric("File Size", f"{file_info['size'] / (1024*1024):.1f} MB")
+                                        with col2:
+                                            st.metric("Duration", "~5-8 min")
+                                        with col3:
+                                            st.metric("Created", file_info['created'].strftime("%H:%M:%S"))
+                                        
+                                        # Download button
+                                        st.download_button(
+                                            label="🎧 Download Podcast",
+                                            data=audio_data,
+                                            file_name=file_info['filename'],
+                                            mime="audio/mpeg",
+                                            type="primary"
+                                        )
+                                        
+                                        # Audio player
+                                        st.audio(audio_data, format='audio/mp3')
+                                        
+                                        st.balloons()
+                                    else:
+                                        st.error("❌ Failed to save podcast file")
+                                else:
+                                    st.error("❌ Voice generation failed")
+                            else:
+                                st.error("❌ AI script generation failed")
                         else:
                             st.error("❌ Could not extract email content")
                     
